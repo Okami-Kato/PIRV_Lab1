@@ -18,40 +18,40 @@ public final class Blocks {
         }
         int amountOfBlocksInRow = (int) ceil((double) n / blockSize);
         Block[] result = new Block[amountOfBlocksInRow * amountOfBlocksInRow];
-        for (int i = 0; i < n; i++) {
+        for (int i = 0; i < n; i += blockSize) {
             int blockI = i / blockSize;
-            for (int j = 0; j < n; j++) {
+            for (int j = 0; j < n; j += blockSize) {
                 int blockJ = j / blockSize;
-                if (i % blockSize == 0 && j % blockSize == 0) {
-                    int blockM = ((blockI + 1) * blockSize <= n) ? blockSize : n % blockSize;
-                    int blockN = ((blockJ + 1) * blockSize <= n) ? blockSize : n % blockSize;
-                    result[blockI * amountOfBlocksInRow + blockJ] = new Block(blockM, blockN);
-                }
-                Block block = result[blockI * amountOfBlocksInRow + blockJ];
-                block.value()[i % block.m() * block.n() + j % block.n()] = matrix[i * n + j];
+                int blockM = ((blockI + 1) * blockSize <= n) ? blockSize : n % blockSize;
+                int blockN = ((blockJ + 1) * blockSize <= n) ? blockSize : n % blockSize;
+                result[blockI * amountOfBlocksInRow + blockJ] = new Block(i, j, blockM, blockN, matrix);
             }
         }
         return result;
     }
 
-    public static Block sequentialMultiply(Block first, Block second) {
+    public static Block sequentialMultiply(Block first, Block second, Block result) {
         if (first.n() != second.m()) {
             throw new IllegalArgumentException();
         }
-        Block result = new Block(first.m(), second.n());
+
+        int firstN = (int) sqrt(first.matrix().length);
+        int secondN = (int) sqrt(second.matrix().length);
+        int resultN = (int) sqrt(result.matrix().length);
+
         for (int i = 0; i < first.m(); i++) {
             for (int j = 0; j < second.n(); j++) {
                 int sum = 0;
                 for (int k = 0; k < first.n(); k++) {
-                    sum += first.value()[i * first.n() + k] * second.value()[k * second.n() + j];
+                    sum += first.matrix()[(i + first.i()) * firstN + first.j() + k] * second.matrix()[(second.i() + k) * secondN + (j + second.j())];
                 }
-                result.value()[i * result.n() + j] = sum;
+                result.matrix()[(first.i() + i) * resultN + (second.j() + j)] += sum;
             }
         }
         return result;
     }
 
-    public static Block[] sequentialMultiply(Block[] first, Block[] second) {
+    public static Block[] sequentialMultiply(Block[] first, Block[] second, int[] resultMatrix) {
         if ((int) Math.sqrt(first.length) != (int) Math.sqrt(second.length)) {
             throw new IllegalArgumentException();
         }
@@ -59,18 +59,18 @@ public final class Blocks {
         Block[] result = new Block[n * n];
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
-                Block sum = new Block(first[i * n + j].m(), first[i * n + j].n());
+                Block resultBlock = new Block(first[i * n + j].i(), first[i * n + j].j(), first[i * n + j].m(), first[i * n + j].n(), resultMatrix);
                 for (int k = 0; k < n; k++) {
-                    sum = sum(sum, sequentialMultiply(first[i * n + k], second[k * n + j]));
+                    sequentialMultiply(first[i * n + k], second[k * n + j], resultBlock);
                 }
-                result[i * n + j] = sum;
+                result[i * n + j] = resultBlock;
             }
         }
         return result;
     }
 
     @SneakyThrows
-    public static Block[] parallelMultiply(Block[] first, Block[] second) {
+    public static Block[] parallelMultiply(Block[] first, Block[] second, int[] resultMatrix) {
         if ((int) Math.sqrt(first.length) != (int) Math.sqrt(second.length)) {
             throw new IllegalArgumentException();
         }
@@ -81,11 +81,11 @@ public final class Blocks {
                 int finalI = i;
                 int finalJ = j;
                 Future<Block> blockFuture = executorService.submit(() -> {
-                    Block sum = new Block(first[finalI * n + finalJ].m(), first[finalI * n + finalJ].n());
+                    Block resultBlock = new Block(first[finalI * n + finalJ].i(), first[finalI * n + finalJ].j(), first[finalI * n + finalJ].m(), first[finalI * n + finalJ].n(), resultMatrix);
                     for (int k = 0; k < n; k++) {
-                        sum = sum(sum, sequentialMultiply(first[finalI * n + k], second[k * n + finalJ]));
+                        sequentialMultiply(first[finalI * n + k], second[k * n + finalJ], resultBlock);
                     }
-                    return sum;
+                    return resultBlock;
                 });
                 futureResult.add(i * n + j, blockFuture);
             }
@@ -101,52 +101,19 @@ public final class Blocks {
         if ((int) Math.sqrt(first.length) != (int) Math.sqrt(second.length)) {
             throw new IllegalArgumentException();
         }
+        int[] resultMatrix = new int[first.length];
+        sequentialMultiply(toBlockMatrix(first, blockSize), toBlockMatrix(second, blockSize), resultMatrix);
 
-        Block[] result = sequentialMultiply(toBlockMatrix(first, blockSize), toBlockMatrix(second, blockSize));
-
-        return toIntArray(result);
+        return resultMatrix;
     }
 
     public static int[] parallelMultiply(int[] first, int[] second, int blockSize) {
         if ((int) Math.sqrt(first.length) != (int) Math.sqrt(second.length)) {
             throw new IllegalArgumentException();
         }
+        int[] resultMatrix = new int[first.length];
+        parallelMultiply(toBlockMatrix(first, blockSize), toBlockMatrix(second, blockSize), resultMatrix);
 
-        Block[] result = parallelMultiply(toBlockMatrix(first, blockSize), toBlockMatrix(second, blockSize));
-
-        return toIntArray(result);
-    }
-
-    public static int[] toIntArray(Block[] blocks) {
-        int amountOfBlocksInRow = (int) Math.sqrt(blocks.length);
-        int n = 0;
-        for (int i = 0; i < amountOfBlocksInRow; i++) {
-            n += blocks[i].n();
-        }
-        int blockSize = blocks[0].n();
-        int[] result = new int[n * n];
-        for (int i = 0; i < n; i++) {
-            int blockI = i / blockSize;
-            for (int j = 0; j < n; j++) {
-                int blockJ = j / blockSize;
-                Block block = blocks[blockI * amountOfBlocksInRow + blockJ];
-                result[i * n + j] = block.value()[i % block.m() * block.n() + j % block.n()];
-            }
-        }
-        return result;
-    }
-
-    public static Block sum(Block first, Block second) {
-        if (first.n() != second.n() || first.m() != second.m()) {
-            throw new IllegalArgumentException();
-        }
-        Block result = new Block(first.m(), first.n());
-        for (int i = 0; i < first.m(); i++) {
-            for (int j = 0; j < first.n(); j++) {
-                int index = i * result.n() + j;
-                result.value()[index] = first.value()[index] + second.value()[index];
-            }
-        }
-        return result;
+        return resultMatrix;
     }
 }

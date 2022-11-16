@@ -1,8 +1,5 @@
 package com.epam.block;
 
-public record Block(int m, int n, int[] value) {
+public record Block(int i, int j, int m, int n, int[] matrix) {
 
-    public Block(int m, int n) {
-        this(m, n, new int[m * n]);
-    }
 }
