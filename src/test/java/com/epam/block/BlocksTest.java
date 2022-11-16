@@ -2,6 +2,7 @@ package com.epam.block;
 
 import com.epam.generator.MatrixGenerator;
 import com.epam.util.MatrixUtil;
+
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVPrinter;
 import org.junit.jupiter.api.*;
@@ -22,30 +23,41 @@ import static org.junit.jupiter.api.Assertions.*;
 class BlocksTest {
 
     private static final int DEFAULT_ORDER = 0;
+
     private final String CSV_FILE_PATH = "result/results.csv";
+
     private final String[] CSV_HEADERS = {"size_of_matrix", "block_size", "sequential_algo", "parallel_algo"};
+
     MatrixGenerator generator = new MatrixGenerator(() -> new Random().nextInt(100) - 50);
+
     private ArrayList<Row> results = new ArrayList<>();
 
     @Test
     void shouldConvertToBlockMatrix() {
         int n = 5;
-
+        int blockSize = 3;
         int[] matrix = generator.generate(n, n);
-        Block[] blocks = toBlockMatrix(matrix, 3);
-        assertEquals(4, blocks.length);
+        Block[] blocks = Blocks.toBlockMatrix(matrix, blockSize);
 
-        assertEquals(3, blocks[0].m());
         assertEquals(3, blocks[0].n());
+        assertEquals(3, blocks[0].m());
+        assertEquals(0, blocks[0].i());
+        assertEquals(0, blocks[0].j());
 
-        assertEquals(3, blocks[1].m());
         assertEquals(2, blocks[1].n());
+        assertEquals(3, blocks[1].m());
+        assertEquals(0, blocks[1].i());
+        assertEquals(3, blocks[1].j());
 
-        assertEquals(2, blocks[2].m());
         assertEquals(3, blocks[2].n());
+        assertEquals(2, blocks[2].m());
+        assertEquals(3, blocks[2].i());
+        assertEquals(0, blocks[2].j());
 
-        assertEquals(2, blocks[3].m());
         assertEquals(2, blocks[3].n());
+        assertEquals(2, blocks[3].m());
+        assertEquals(3, blocks[3].i());
+        assertEquals(3, blocks[3].j());
     }
 
     @Test
@@ -56,24 +68,19 @@ class BlocksTest {
     }
 
     @Test
-    void shouldConvertToIntArray() {
-        int n = 5;
-        int blockSize = 2;
-        int[] matrix = generator.generate(n, n);
-        Block[] blocks = Blocks.toBlockMatrix(matrix, blockSize);
-        int[] converted = Blocks.toIntArray(blocks);
-        assertTrue(MatrixUtil.areEqual(matrix, converted, n, n));
-    }
-
-    @Test
     void shouldSequentiallyMultiply() {
         int n = 3;
         int blockSize = 2;
 
         int[] first = generator.generate(n, n);
         int[] second = generator.generate(n, n);
-
-        int[] expected = Blocks.sequentialMultiply(new Block(n, n, first), new Block(n, n, second)).value();
+//        int[] first = new int[]{1, 2, 3, 4, 5, 6, 7, 8, 9};
+//        int[] second = new int[]{2, 5, 4, 3, 2, 1, 8, 3, 7};
+        int[] expected = Blocks.sequentialMultiply(
+            new Block(0, 0, n, n, first),
+            new Block(0, 0, n, n, second),
+            new Block(0, 0, n, n, new int[n * n])
+        ).matrix();
         int[] actual = Blocks.sequentialMultiply(first, second, blockSize);
         assertTrue(MatrixUtil.areEqual(expected, actual, n, n));
     }
@@ -86,42 +93,13 @@ class BlocksTest {
         int[] first = generator.generate(n, n);
         int[] second = generator.generate(n, n);
 
-        int[] expected = Blocks.sequentialMultiply(new Block(n, n, first), new Block(n, n, second)).value();
+        int[] expected = Blocks.sequentialMultiply(
+                new Block(0, 0, n, n, first),
+                new Block(0, 0, n, n, second),
+                new Block(0, 0, n, n, new int[n * n]))
+            .matrix();
         int[] actual = Blocks.parallelMultiply(first, second, blockSize);
         assertTrue(MatrixUtil.areEqual(expected, actual, n, n));
-    }
-
-    @Test
-    void shouldAdd() {
-        int m = 4;
-        int n = 3;
-
-        int[] first = generator.generate(m, n);
-        int[] second = generator.generate(m, n);
-
-        Block firstBlock = new Block(m, n, first);
-        Block secondBlock = new Block(m, n, second);
-        Block sum = sum(firstBlock, secondBlock);
-
-        for (int i = 0; i < m * n; i++) {
-            assertEquals(first[i] + second[i], sum.value()[i]);
-        }
-    }
-
-    @Test
-    void shouldNotAdd() {
-        int m1 = 4;
-        int n1 = 3;
-
-        int m2 = 3;
-        int n2 = 3;
-
-        int[] first = generator.generate(m1, n1);
-        int[] second = generator.generate(m2, n2);
-
-        Block firstBlock = new Block(m1, n1, first);
-        Block secondBlock = new Block(m2, n2, second);
-        assertThrows(IllegalArgumentException.class, () -> sum(firstBlock, secondBlock));
     }
 
     @ParameterizedTest
@@ -131,11 +109,11 @@ class BlocksTest {
         Block[] first = toBlockMatrix(generator.generate(n, n), blockSize);
         Block[] second = toBlockMatrix(generator.generate(n, n), blockSize);
         long sequentialStart = System.currentTimeMillis();
-        sequentialMultiply(first, second);
+        sequentialMultiply(first, second, new int[n * n]);
         long sequentialTime = System.currentTimeMillis() - sequentialStart;
 
         long parallelStart = System.currentTimeMillis();
-        parallelMultiply(first, second);
+        parallelMultiply(first, second, new int[n * n]);
         long parallelTime = System.currentTimeMillis() - parallelStart;
 
         results.add(new Row(n, blockSize, sequentialTime, parallelTime));
@@ -156,6 +134,7 @@ class BlocksTest {
         }
     }
 
-    private static record Row(int n, int blockSize, long sequentialTime, long parallelTime) {
+    private record Row(int n, int blockSize, long sequentialTime, long parallelTime) {
+
     }
 }
